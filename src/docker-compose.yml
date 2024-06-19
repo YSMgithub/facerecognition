@@ -1,0 +1,174 @@
+services:
+  portainer:
+    container_name: portainer
+    image: portainer/portainer
+    restart: always
+    stdin_open: true
+    tty: true
+    ports:
+      - "9000:9000/tcp"
+    environment:
+      - TZ=Asia/Novosibirsk
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - /home/ysm/docker/volumes/portainer:/data
+    
+
+  homeassistant:
+    container_name: homeassistant
+    image: "ghcr.io/home-assistant/home-assistant:stable"
+    volumes:
+      - /home/ysm/docker/volumes/homeassistant/config:/config
+      - /etc/localtime:/etc/localtime:ro
+      - /run/dbus:/run/dbus:ro
+    restart: unless-stopped
+    privileged: true
+    network_mode: host
+
+  frigate:
+    container_name: frigate
+    privileged: true # this may not be necessary for all setups
+    restart: unless-stopped
+    image: ghcr.io/blakeblackshear/frigate:stable
+    shm_size: "64mb" # update for your cameras based on calculation above
+    volumes:
+      - /etc/localtime:/etc/localtime:ro
+      - /home/ysm/docker/volumes/frigate/config:/config
+      - /home/ysm/docker/volumes/frigate/storage:/media/frigate
+      - type: tmpfs # Optional: 1GB of memory, reduces SSD/SD Card wear
+        target: /tmp/cache
+        tmpfs:
+          size: 1000000000
+    ports:
+      - "5000:5000"
+      - "8554:8554" # RTSP feeds
+      - "8555:8555/tcp" # WebRTC over tcp
+      - "8555:8555/udp" # WebRTC over udp
+    environment:
+      FRIGATE_RTSP_PASSWORD: "password"
+    network_mode: host
+
+  mqtt5:
+    image: eclipse-mosquitto:latest
+    container_name: mqtt5
+    ports:
+      - "1883:1883" #default mqtt port
+      - "8883:8883"
+      - "9001:9001" #default mqtt port for websockets
+    volumes:
+      - /home/ysm/docker/volumes/mqtt/config:/mosquitto/config
+      - /home/ysm/docker/volumes/mqtt/data:/mosquitto/data
+      - /home/ysm/docker/volumes/mqtt/log:/mosquitto/log
+    restart: unless-stopped
+
+  double-take:
+    container_name: double-take
+    image: jakowenko/double-take:latest
+    restart: unless-stopped
+    volumes:
+      - /home/ysm/docker/volumes/double-take:/.storage
+    network_mode: host
+
+  deepstack:
+    container_name: deepstack
+    restart: unless-stopped
+    image: deepquestai/deepstack
+    ports:
+      - '5555:5000'
+    environment:
+      - VISION-FACE=True
+      - API-KEY=""
+    volumes:
+      - /home/ysm/docker/volumes/deepstack:/modelstore/detection
+
+  deepstack_ui:
+    container_name: deepstack_ui
+    restart: unless-stopped
+    image: robmarkcole/deepstack-ui:latest
+    environment: 
+      - DEEPSTACK_IP=10.100.0.149
+      - DEEPSTACK_PORT=5555
+      - DEEPSTACK_API_KEY=""
+      - DEEPSTACK_TIMEOUT=20
+    ports:
+      - '8501:8501'
+
+  # compreface-postgres-db:
+  #   image: ${registry}compreface-postgres-db:${POSTGRES_VERSION}
+  #   restart: always
+  #   container_name: "compreface-postgres-db"
+  #   environment:
+  #     - POSTGRES_USER=${postgres_username}
+  #     - POSTGRES_PASSWORD=${postgres_password}
+  #     - POSTGRES_DB=${postgres_db}
+  #   volumes:
+  #     - /home/ysm/docker/volumes/compreface/data:/var/lib/postgresql/data
+
+  # compreface-admin:
+  #   restart: always
+  #   image: ${registry}compreface-admin:${ADMIN_VERSION}
+  #   container_name: "compreface-admin"
+  #   environment:
+  #     - POSTGRES_USER=${postgres_username}
+  #     - POSTGRES_PASSWORD=${postgres_password}
+  #     - POSTGRES_URL=jdbc:postgresql://${postgres_domain}:${postgres_port}/${postgres_db}
+  #     - SPRING_PROFILES_ACTIVE=dev
+  #     - ENABLE_EMAIL_SERVER=${enable_email_server}
+  #     - EMAIL_HOST=${email_host}
+  #     - EMAIL_USERNAME=${email_username}
+  #     - EMAIL_FROM=${email_from}
+  #     - EMAIL_PASSWORD=${email_password}
+  #     - ADMIN_JAVA_OPTS=${compreface_admin_java_options}
+  #     - MAX_FILE_SIZE=${max_file_size}
+  #     - MAX_REQUEST_SIZE=${max_request_size}B
+  #   depends_on:
+  #     - compreface-postgres-db
+  #     - compreface-api
+
+  # compreface-api:
+  #   restart: always
+  #   image: ${registry}compreface-api:${API_VERSION}
+  #   container_name: "compreface-api"
+  #   depends_on:
+  #     - compreface-postgres-db
+  #   environment:
+  #     - POSTGRES_USER=${postgres_username}
+  #     - POSTGRES_PASSWORD=${postgres_password}
+  #     - POSTGRES_URL=jdbc:postgresql://${postgres_domain}:${postgres_port}/${postgres_db}
+  #     - SPRING_PROFILES_ACTIVE=dev
+  #     - API_JAVA_OPTS=${compreface_api_java_options}
+  #     - SAVE_IMAGES_TO_DB=${save_images_to_db}
+  #     - MAX_FILE_SIZE=${max_file_size}
+  #     - MAX_REQUEST_SIZE=${max_request_size}B
+  #     - CONNECTION_TIMEOUT=${connection_timeout:-10000}
+  #     - READ_TIMEOUT=${read_timeout:-60000}
+
+  # compreface-fe:
+  #   restart: always
+  #   image: ${registry}compreface-fe:${FE_VERSION}
+  #   container_name: "compreface-ui"
+  #   ports:
+  #     - "8000:80"
+  #   depends_on:
+  #     - compreface-api
+  #     - compreface-admin
+  #   environment:
+  #     - CLIENT_MAX_BODY_SIZE=${max_request_size}
+  #     - PROXY_READ_TIMEOUT=${read_timeout:-60000}ms
+  #     - PROXY_CONNECT_TIMEOUT=${connection_timeout:-10000}ms
+
+  # compreface-core:
+  #   restart: always
+  #   image: ${registry}compreface-core:${CORE_VERSION}
+  #   container_name: "compreface-core"
+  #   environment:
+  #     - ML_PORT=3000
+  #     - IMG_LENGTH_LIMIT=${max_detect_size}
+  #     - UWSGI_PROCESSES=${uwsgi_processes:-2}
+  #     - UWSGI_THREADS=${uwsgi_threads:-1}
+  #   healthcheck:
+  #     test: curl --fail http://localhost:3000/healthcheck || exit 1
+  #     interval: 10s
+  #     retries: 0
+  #     start_period: 0s
+  #     timeout: 1s
